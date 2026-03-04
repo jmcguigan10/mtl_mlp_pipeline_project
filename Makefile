@@ -39,17 +39,22 @@ SWEEP_MODEL_SIZES ?= small,medium,large
 SWEEP_BATCH_NORMS ?= 0,1
 SWEEP_BATCH_TRAIN_STEPS ?= 150
 SWEEP_BATCH_SAMPLE_BUDGET ?= 65536
+SWEEP_BATCH_VAL_STEPS ?= 10
 SWEEP_HYPER_TRAIN_STEPS ?= 200
 SWEEP_HYPER_SAMPLE_BUDGET ?= 65536
 SWEEP_VAL_STEPS ?= 40
+SWEEP_BATCH_SELECTION_REL_TOL ?= 0.05
 SWEEP_SELECTED_BATCH ?=
+PLOT_HISTORY ?= outputs/rhea_box3d_abs_train/history.csv
+PLOT_DIR ?= plots
+PLOT_EVAL_LABEL ?= test
 SLURM_ACCOUNT ?= isaac-utk0307
 SLURM_PARTITION ?= condo-slagergr
 SLURM_QOS ?= condo
 SLURM_TIME ?= 02:00:00
 SLURM_GRES ?= gpu:v100s:1
 
-.PHONY: help check-python train eval predict preprocess \
+.PHONY: help check-python train eval predict preprocess plot-losses \
 	smoke smoke-rhea smoke-box3d smoke-equiv test-equiv tune-v100 clean-smoke
 
 help:
@@ -58,6 +63,7 @@ help:
 	@echo "  make eval CONFIG=<yaml> CHECKPOINT=<pt> [SPLIT=test] [EVAL_OUTPUT=<json>|OUTPUT=<json>]"
 	@echo "  make predict CONFIG=<yaml> CHECKPOINT=<pt> [SPLIT=test] [PRED_OUTPUT=<npz>|OUTPUT=<npz>] [FILES='a.h5 b.h5']"
 	@echo "  make preprocess INPUT_DIR=<dir> OUTPUT_DIR=<dir> [BATCH_SIZE=1024] [MAX_SAMPLES_PER_FILE=N]"
+	@echo "  make plot-losses [PLOT_HISTORY=<history.csv>] [PLOT_DIR=plots] [PLOT_EVAL_LABEL=test]"
 	@echo "  make tune-v100 [SWEEP_CONFIG=<yaml>] [SWEEP_BATCH_SIZES=256,512,...]"
 	@echo "  make smoke | smoke-rhea | smoke-box3d | smoke-equiv | test-equiv"
 	@echo ""
@@ -141,6 +147,12 @@ preprocess: check-python
 	fi; \
 	"$${cmd[@]}"
 
+plot-losses: check-python
+	@$(PYTHON) scripts/plot_rhea_style_losses.py \
+		--history "$(PLOT_HISTORY)" \
+		--output_dir "$(PLOT_DIR)" \
+		--eval_label "$(PLOT_EVAL_LABEL)"
+
 smoke: check-python
 	@$(PYTHON) scripts/smoke_test.py
 
@@ -170,8 +182,10 @@ tune-v100: check-python
 			--batch_norm_options "$(SWEEP_BATCH_NORMS)" \
 			--batch_train_steps "$(SWEEP_BATCH_TRAIN_STEPS)" \
 			--batch_sample_budget "$(SWEEP_BATCH_SAMPLE_BUDGET)" \
+			--batch_val_steps "$(SWEEP_BATCH_VAL_STEPS)" \
 			--hyper_train_steps "$(SWEEP_HYPER_TRAIN_STEPS)" \
 			--hyper_sample_budget "$(SWEEP_HYPER_SAMPLE_BUDGET)" \
+			--batch_selection_rel_tol "$(SWEEP_BATCH_SELECTION_REL_TOL)" \
 			--val_steps "$(SWEEP_VAL_STEPS)" ); \
 	if [[ -n "$(strip $(SWEEP_SELECTED_BATCH))" ]]; then \
 		cmd+=( --selected_batch_size "$(SWEEP_SELECTED_BATCH)" ); \

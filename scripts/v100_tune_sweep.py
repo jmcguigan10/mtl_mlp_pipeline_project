@@ -207,6 +207,26 @@ def _rank_key(entry: dict[str, Any]) -> tuple[float, float]:
     return (val, -sps)
 
 
+def _select_batch_size(batch_results: list[dict[str, Any]], rel_tol: float = 0.05) -> int:
+    ranked = [
+        entry
+        for entry in batch_results
+        if entry.get("status") == "ok" and math.isfinite(float(entry.get("val_loss_mean", float("nan"))))
+    ]
+    if not ranked:
+        ranked = [entry for entry in batch_results if entry.get("status") == "ok"]
+        if not ranked:
+            raise ValueError("No successful batch-size trials.")
+        return int(max(ranked, key=lambda entry: float(entry.get("samples_per_sec", 0.0)))["batch_size"])
+
+    ranked.sort(key=_rank_key)
+    best_val = float(ranked[0]["val_loss_mean"])
+    near_best = [entry for entry in ranked if float(entry["val_loss_mean"]) <= best_val * (1.0 + rel_tol)]
+
+    # Throughput tends to be flat in this workload; prefer smaller batches among near-ties.
+    return int(min(near_best, key=lambda entry: int(entry["batch_size"]))["batch_size"])
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="V100 batch-size and hyperparameter tuning sweep.")
     parser.add_argument("--base_config", default="configs/rhea_v100_sweep.yaml")
@@ -218,9 +238,11 @@ def main() -> None:
     parser.add_argument("--batch_norm_options", default="0,1")
     parser.add_argument("--batch_train_steps", type=int, default=150)
     parser.add_argument("--batch_sample_budget", type=int, default=65536)
+    parser.add_argument("--batch_val_steps", type=int, default=10)
     parser.add_argument("--hyper_train_steps", type=int, default=200)
     parser.add_argument("--hyper_sample_budget", type=int, default=65536)
     parser.add_argument("--val_steps", type=int, default=40)
+    parser.add_argument("--batch_selection_rel_tol", type=float, default=0.05)
     parser.add_argument("--selected_batch_size", type=int, default=None)
     args = parser.parse_args()
 
@@ -255,8 +277,8 @@ def main() -> None:
         _apply_model_preset(cfg, preset_name="medium", batch_norm=False)
         budget_steps = int(math.ceil(float(max(args.batch_sample_budget, 1)) / float(max(batch_size, 1))))
         train_steps = max(4, min(int(max(args.batch_train_steps, 1)), budget_steps))
-        print(f"[batch] bs={batch_size} train_steps={train_steps}")
-        result = _run_trial(cfg, train_steps=train_steps, val_steps=0)
+        print(f"[batch] bs={batch_size} train_steps={train_steps} val_steps={int(args.batch_val_steps)}")
+        result = _run_trial(cfg, train_steps=train_steps, val_steps=int(args.batch_val_steps))
         result.update(
             {
                 "phase": "batch",
@@ -274,7 +296,7 @@ def main() -> None:
     if args.selected_batch_size is not None:
         chosen_batch = int(args.selected_batch_size)
     elif valid_batch:
-        chosen_batch = max(valid_batch, key=lambda entry: float(entry.get("samples_per_sec", 0.0)))["batch_size"]
+        chosen_batch = _select_batch_size(valid_batch, rel_tol=float(args.batch_selection_rel_tol))
     else:
         chosen_batch = min(batch_sizes)
     print(f"[selection] chosen_batch_size={chosen_batch}")

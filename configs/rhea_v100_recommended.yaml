@@ -56,8 +56,12 @@ data:
     num_workers: 4
     pin_memory: true
     persistent_workers: true
+    prefetch_factor: 4
     drop_last: false
     shuffle_train: true
+    sampler:
+      name: contiguous_blocks
+      block_size: 8192
 
 model:
   input_dim: 24

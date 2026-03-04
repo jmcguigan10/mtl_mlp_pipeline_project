@@ -12,15 +12,17 @@ class EpochAccumulator:
     control_enabled: bool = False
     control_ratio_eps: float = 1.0e-8
     control_ratio_floor_quantile: float = 0.10
+    control_min_baseline_error: float = 1.0e-4
 
     def __post_init__(self) -> None:
         self.loss_sums: dict[str, float] = {}
         self.num_samples = 0
-        self.bc_correct = 0
-        self.bc_tp = 0
-        self.bc_fp = 0
-        self.bc_fn = 0
-        self.bc_tn = 0
+        self.bc_correct = 0.0
+        self.bc_weight_total = 0.0
+        self.bc_tp = 0.0
+        self.bc_fp = 0.0
+        self.bc_fn = 0.0
+        self.bc_tn = 0.0
         self.reg_abs = 0.0
         self.reg_sq = 0.0
         self.reg_count = 0.0
@@ -35,6 +37,12 @@ class EpochAccumulator:
         self.control_reg_count = 0.0
         self.vector_control_ratios: list[torch.Tensor] = []
         self.reg_control_ratios: list[torch.Tensor] = []
+        self.vector_control_wins = 0.0
+        self.reg_control_wins = 0.0
+        self.vector_control_valid = 0.0
+        self.reg_control_valid = 0.0
+        self.vector_control_skipped = 0.0
+        self.reg_control_skipped = 0.0
 
     def update_losses(self, losses: dict[str, float], batch_size: int) -> None:
         self.num_samples += batch_size
@@ -88,26 +96,42 @@ class EpochAccumulator:
         if bool(torch.any(vec_mask)):
             vec_err = vec_err[vec_mask]
             vec_control_err = vec_control_err[vec_mask]
-            vec_floor = torch.clamp(
-                torch.quantile(vec_control_err, min(max(self.control_ratio_floor_quantile, 0.0), 1.0)),
-                min=self.control_ratio_eps,
-            )
-            vec_ratio = torch.abs(vec_err / torch.clamp(vec_control_err, min=vec_floor))
-            self.control_vec_abs += float(vec_control_err.sum().item())
-            self.control_vec_count += float(vec_err.numel())
-            self.vector_control_ratios.append(vec_ratio.detach().cpu())
+            vec_min_baseline = max(self.control_ratio_eps, self.control_min_baseline_error)
+            vec_valid = vec_control_err > vec_min_baseline
+            self.vector_control_skipped += float((~vec_valid).sum().item())
+            if bool(torch.any(vec_valid)):
+                vec_err = vec_err[vec_valid]
+                vec_control_err = vec_control_err[vec_valid]
+                vec_floor = torch.clamp(
+                    torch.quantile(vec_control_err, min(max(self.control_ratio_floor_quantile, 0.0), 1.0)),
+                    min=vec_min_baseline,
+                )
+                vec_ratio = torch.abs(vec_err / torch.clamp(vec_control_err, min=vec_floor))
+                self.control_vec_abs += float(vec_control_err.sum().item())
+                self.control_vec_count += float(vec_err.numel())
+                self.vector_control_wins += float((vec_err < vec_control_err).sum().item())
+                self.vector_control_valid += float(vec_err.numel())
+                self.vector_control_ratios.append(vec_ratio.detach().cpu())
 
         if bool(torch.any(reg_mask)):
             reg_err = reg_err[reg_mask]
             reg_control_err = reg_control_err[reg_mask]
-            reg_floor = torch.clamp(
-                torch.quantile(reg_control_err, min(max(self.control_ratio_floor_quantile, 0.0), 1.0)),
-                min=self.control_ratio_eps,
-            )
-            reg_ratio = torch.abs(reg_err / torch.clamp(reg_control_err, min=reg_floor))
-            self.control_reg_abs += float(reg_control_err.sum().item())
-            self.control_reg_count += float(reg_err.numel())
-            self.reg_control_ratios.append(reg_ratio.detach().cpu())
+            reg_min_baseline = max(self.control_ratio_eps, self.control_min_baseline_error)
+            reg_valid = reg_control_err > reg_min_baseline
+            self.reg_control_skipped += float((~reg_valid).sum().item())
+            if bool(torch.any(reg_valid)):
+                reg_err = reg_err[reg_valid]
+                reg_control_err = reg_control_err[reg_valid]
+                reg_floor = torch.clamp(
+                    torch.quantile(reg_control_err, min(max(self.control_ratio_floor_quantile, 0.0), 1.0)),
+                    min=reg_min_baseline,
+                )
+                reg_ratio = torch.abs(reg_err / torch.clamp(reg_control_err, min=reg_floor))
+                self.control_reg_abs += float(reg_control_err.sum().item())
+                self.control_reg_count += float(reg_err.numel())
+                self.reg_control_wins += float((reg_err < reg_control_err).sum().item())
+                self.reg_control_valid += float(reg_err.numel())
+                self.reg_control_ratios.append(reg_ratio.detach().cpu())
 
     @staticmethod
     def _summarize_ratio(values: list[torch.Tensor]) -> dict[str, float]:
@@ -137,19 +161,32 @@ class EpochAccumulator:
     def update_outputs(self, outputs: dict[str, torch.Tensor], batch: dict[str, torch.Tensor]) -> None:
         bc_logits = outputs['bc'].detach()
         bc_target = batch['bc_target'].detach()
+        bc_ref = bc_logits.reshape(bc_logits.shape[0], -1)
+        bc_weight = self._task_weight(batch, 'bc_sample_weight', bc_ref)
+        bc_valid = bc_weight > 0.0
+
         if bc_logits.shape[-1] == 1:
-            probs = torch.sigmoid(bc_logits.reshape_as(bc_target))
-            preds = (probs >= self.bc_threshold).long()
-            targets = bc_target.long()
-            self.bc_correct += int((preds == targets).sum().item())
-            self.bc_tp += int(((preds == 1) & (targets == 1)).sum().item())
-            self.bc_fp += int(((preds == 1) & (targets == 0)).sum().item())
-            self.bc_fn += int(((preds == 0) & (targets == 1)).sum().item())
-            self.bc_tn += int(((preds == 0) & (targets == 0)).sum().item())
+            probs = torch.sigmoid(bc_logits.reshape_as(bc_target)).reshape(bc_target.shape[0], -1)[:, 0]
+            targets = bc_target.reshape(bc_target.shape[0], -1)[:, 0].long()
+            if bool(torch.any(bc_valid)):
+                preds = (probs >= self.bc_threshold).long()[bc_valid]
+                targets = targets[bc_valid]
+                weights = bc_weight[bc_valid]
+                self.bc_correct += float(((preds == targets).float() * weights).sum().item())
+                self.bc_weight_total += float(weights.sum().item())
+                self.bc_tp += float((((preds == 1) & (targets == 1)).float() * weights).sum().item())
+                self.bc_fp += float((((preds == 1) & (targets == 0)).float() * weights).sum().item())
+                self.bc_fn += float((((preds == 0) & (targets == 1)).float() * weights).sum().item())
+                self.bc_tn += float((((preds == 0) & (targets == 0)).float() * weights).sum().item())
         else:
             preds = torch.argmax(bc_logits, dim=-1)
             targets = bc_target.view(-1).long()
-            self.bc_correct += int((preds == targets).sum().item())
+            if bool(torch.any(bc_valid)):
+                preds = preds[bc_valid]
+                targets = targets[bc_valid]
+                weights = bc_weight[bc_valid]
+                self.bc_correct += float(((preds == targets).float() * weights).sum().item())
+                self.bc_weight_total += float(weights.sum().item())
 
         reg_pred = outputs['regression'].detach()
         reg_target = batch['reg_target'].detach()
@@ -179,12 +216,13 @@ class EpochAccumulator:
         metrics: dict[str, float] = {}
         for key, value in self.loss_sums.items():
             metrics[f'{prefix}/{key}'] = value / max(self.num_samples, 1)
+        if self.bc_weight_total > 0:
+            metrics[f'{prefix}/bc_accuracy'] = self.bc_correct / max(self.bc_weight_total, 1.0)
         total_bc = self.bc_tp + self.bc_fp + self.bc_fn + self.bc_tn
         if total_bc > 0:
-            precision = self.bc_tp / max(self.bc_tp + self.bc_fp, 1)
-            recall = self.bc_tp / max(self.bc_tp + self.bc_fn, 1)
+            precision = self.bc_tp / max(self.bc_tp + self.bc_fp, 1.0)
+            recall = self.bc_tp / max(self.bc_tp + self.bc_fn, 1.0)
             f1 = 2 * precision * recall / max(precision + recall, 1e-8)
-            metrics[f'{prefix}/bc_accuracy'] = self.bc_correct / max(total_bc, 1)
             metrics[f'{prefix}/bc_precision'] = precision
             metrics[f'{prefix}/bc_recall'] = recall
             metrics[f'{prefix}/bc_f1'] = f1
@@ -201,6 +239,16 @@ class EpochAccumulator:
             metrics[f'{prefix}/control_vector_mae'] = self.control_vec_abs / max(self.control_vec_count, 1)
             metrics[f'{prefix}/control_reg_mae'] = self.control_reg_abs / max(self.control_reg_count, 1)
             metrics[f'{prefix}/control_growth_mae'] = metrics[f'{prefix}/control_reg_mae']
+            metrics[f'{prefix}/vector_vs_control_win_rate'] = self.vector_control_wins / max(self.vector_control_valid, 1.0)
+            metrics[f'{prefix}/reg_vs_control_win_rate'] = self.reg_control_wins / max(self.reg_control_valid, 1.0)
+            metrics[f'{prefix}/vector_vs_control_skipped_frac'] = self.vector_control_skipped / max(
+                self.vector_control_valid + self.vector_control_skipped,
+                1.0,
+            )
+            metrics[f'{prefix}/reg_vs_control_skipped_frac'] = self.reg_control_skipped / max(
+                self.reg_control_valid + self.reg_control_skipped,
+                1.0,
+            )
             metrics[f'{prefix}/vector_vs_control_frac_mean'] = vec_stats['mean']
             metrics[f'{prefix}/vector_vs_control_frac_median'] = vec_stats['median']
             metrics[f'{prefix}/vector_vs_control_frac_p95'] = vec_stats['p95']

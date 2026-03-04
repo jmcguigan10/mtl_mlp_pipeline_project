@@ -22,6 +22,11 @@
       "num_workers": 0,
       "persistent_workers": false,
       "pin_memory": true,
+      "prefetch_factor": 4,
+      "sampler": {
+        "block_size": 8192,
+        "name": "contiguous_blocks"
+      },
       "shuffle_train": true
     },
     "preprocess": {
@@ -41,14 +46,15 @@
       "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/benchmark_data_box3d_abs/stable_M1-NuLib_rl1.h5",
       "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/benchmark_data_box3d_abs/stable_M1-Nulib-7ms_rl0.h5",
       "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/benchmark_data_box3d_abs/stable_M1-Nulib-7ms_rl1.h5",
-      "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/benchmark_data_box3d_abs/stable_random.h5"
+      "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/benchmark_data_box3d_abs/stable_oneflavor.h5",
+      "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/benchmark_data_box3d_abs/stable_random.h5",
+      "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/benchmark_data_box3d_abs/stable_zerofluxfac.h5"
     ],
     "val_files": [
       "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/benchmark_data_box3d_abs/asymptotic_M1-NuLib-old.h5",
       "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/benchmark_data_box3d_abs/stable_M1-LeakageRates_rl2.h5",
       "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/benchmark_data_box3d_abs/stable_M1-NuLib_rl2.h5",
-      "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/benchmark_data_box3d_abs/stable_M1-Nulib-7ms_rl2.h5",
-      "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/benchmark_data_box3d_abs/stable_oneflavor.h5"
+      "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/benchmark_data_box3d_abs/stable_M1-Nulib-7ms_rl2.h5"
     ]
   },
   "evaluation": {

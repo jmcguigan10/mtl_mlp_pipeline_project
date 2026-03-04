@@ -9,7 +9,16 @@ from torch.nn.utils import clip_grad_norm_
 from tqdm.auto import tqdm
 
 from ..preprocessing import Box3DHeuristic
-from ..utils.common import count_parameters, ensure_dir, get_device, move_batch_to_device, prune_checkpoints, save_json, set_seed
+from ..utils.common import (
+    count_parameters,
+    ensure_dir,
+    get_device,
+    load_torch_checkpoint,
+    move_batch_to_device,
+    prune_checkpoints,
+    save_json,
+    set_seed,
+)
 from .balancers import GradNormLossBalancer, StaticLossBalancer, build_loss_balancer
 from .epoch_metrics import EpochAccumulator
 from .losses import TaskLossBundle, build_loss_bundle
@@ -63,6 +72,7 @@ class Trainer:
         self.control_enabled = bool(config.evaluation.get_path('control.enabled', False))
         self.control_ratio_eps = float(config.evaluation.get_path('control.ratio_eps', 1.0e-8))
         self.control_ratio_floor_quantile = float(config.evaluation.get_path('control.ratio_floor_quantile', 0.10))
+        self.control_min_baseline_error = float(config.evaluation.get_path('control.min_baseline_error', 1.0e-4))
         self.control_compute_during_fit = bool(config.evaluation.get_path('control.compute_during_fit', False))
         self.control_input_is_normalized = bool(config.evaluation.get_path('control.input_is_normalized', True))
         self.control_nf = int(config.evaluation.get_path('control.nf', 3))
@@ -138,6 +148,16 @@ class Trainer:
             scheduler.step(metric_value)
         else:
             scheduler.step()
+
+    def _restore_checkpoint(self, checkpoint_name: str) -> bool:
+        checkpoint_path = self.checkpoint_dir / checkpoint_name
+        if not checkpoint_path.exists():
+            return False
+        checkpoint = load_torch_checkpoint(checkpoint_path)
+        self.model.load_state_dict(checkpoint['model_state_dict'])
+        self.loss_bundle.load_state_dict(checkpoint.get('loss_bundle_state_dict', {}))
+        self.balancer.load_state_dict(checkpoint.get('balancer_state_dict', {}))
+        return True
 
     def _compute_task_losses(self, batch: dict[str, torch.Tensor]) -> tuple[dict[str, torch.Tensor], dict[str, torch.Tensor]]:
         outputs = self.model(batch['inputs'])
@@ -279,6 +299,7 @@ class Trainer:
             control_enabled=control_enabled,
             control_ratio_eps=self.control_ratio_eps,
             control_ratio_floor_quantile=self.control_ratio_floor_quantile,
+            control_min_baseline_error=self.control_min_baseline_error,
         )
 
     def _run_loader(self, loader: Any, training: bool, epoch: int) -> dict[str, float]:
@@ -355,6 +376,10 @@ class Trainer:
                 final_metrics = merged_metrics
                 break
             final_metrics = merged_metrics
+
+        restored_best = self._restore_checkpoint('best.pt')
+        if restored_best and self.val_loader is not None:
+            final_metrics.update(self.evaluate(self.val_loader, split_name='best_val'))
 
         if self.test_loader is not None:
             test_metrics = self.evaluate(self.test_loader, split_name='test')

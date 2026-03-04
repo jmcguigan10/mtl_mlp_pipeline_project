@@ -19,11 +19,14 @@ class BaseTaskLoss(nn.Module):
     def _apply_sample_weight(loss_tensor: torch.Tensor, sample_weight: torch.Tensor | None) -> torch.Tensor:
         if sample_weight is None:
             return loss_tensor.mean()
-        weight = sample_weight
+        weight = sample_weight.to(device=loss_tensor.device, dtype=loss_tensor.dtype)
+        if weight.ndim > loss_tensor.ndim and weight.shape[0] == loss_tensor.shape[0]:
+            # Collapse unexpected extra dims into a per-sample weight before broadcasting.
+            weight = weight.reshape(weight.shape[0], -1).mean(dim=1)
         while weight.ndim < loss_tensor.ndim:
             weight = weight.unsqueeze(-1)
         weighted = loss_tensor * weight
-        normalizer = weight.sum().clamp_min(1e-8)
+        normalizer = weight.expand_as(loss_tensor).sum().clamp_min(1e-8)
         return weighted.sum() / normalizer
 
 

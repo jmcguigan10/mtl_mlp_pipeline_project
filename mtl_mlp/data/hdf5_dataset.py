@@ -9,6 +9,8 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 
+from .samplers import ContiguousBlockBatchSampler
+
 
 @dataclass
 class FileIndexEntry:
@@ -270,12 +272,45 @@ def build_dataloader(dataset: Dataset | None, config: Any, train: bool) -> DataL
         return None
     loader_cfg = config.data.loader
     num_workers = int(loader_cfg.get('num_workers', 0))
+    batch_size = int(loader_cfg.get('batch_size', 256))
+    shuffle_train = bool(loader_cfg.get('shuffle_train', True))
+    drop_last = bool(loader_cfg.get('drop_last', False)) if train else False
+
+    common_kwargs: dict[str, Any] = {
+        'num_workers': num_workers,
+        'pin_memory': bool(loader_cfg.get('pin_memory', True)),
+        'persistent_workers': bool(loader_cfg.get('persistent_workers', False)) if num_workers > 0 else False,
+    }
+    if num_workers > 0 and loader_cfg.get('prefetch_factor') is not None:
+        common_kwargs['prefetch_factor'] = int(loader_cfg.get('prefetch_factor'))
+
+    sampler_cfg = loader_cfg.get('sampler', {})
+    sampler_name = 'default'
+    if isinstance(sampler_cfg, dict):
+        sampler_name = str(sampler_cfg.get('name', 'default')).lower()
+    elif hasattr(sampler_cfg, 'get'):
+        sampler_name = str(sampler_cfg.get('name', 'default')).lower()
+
+    if train and sampler_name == 'contiguous_blocks':
+        block_size_raw = sampler_cfg.get('block_size', max(batch_size * 8, 2048))
+        batch_sampler = ContiguousBlockBatchSampler(
+            dataset=dataset,
+            batch_size=batch_size,
+            block_size=int(block_size_raw),
+            shuffle=shuffle_train,
+            drop_last=drop_last,
+            seed=int(config.get('seed', 42)),
+        )
+        return DataLoader(
+            dataset,
+            batch_sampler=batch_sampler,
+            **common_kwargs,
+        )
+
     return DataLoader(
         dataset,
-        batch_size=int(loader_cfg.get('batch_size', 256)),
-        shuffle=bool(loader_cfg.get('shuffle_train', True)) if train else False,
-        num_workers=num_workers,
-        pin_memory=bool(loader_cfg.get('pin_memory', True)),
-        persistent_workers=bool(loader_cfg.get('persistent_workers', False)) if num_workers > 0 else False,
-        drop_last=bool(loader_cfg.get('drop_last', False)) if train else False,
+        batch_size=batch_size,
+        shuffle=shuffle_train if train else False,
+        drop_last=drop_last,
+        **common_kwargs,
     )
