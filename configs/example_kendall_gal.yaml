@@ -1,3 +1,5 @@
+# Synthetic tutorial config showing Kendall-Gal loss balancing.
+
 seed: 42
 
 output:

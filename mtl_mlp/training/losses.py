@@ -119,13 +119,20 @@ class TaskLossBundle(nn.Module):
 
     def forward(self, outputs: dict[str, torch.Tensor], batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         sample_weight = batch.get('sample_weight')
+        bc_sample_weight = batch.get('bc_sample_weight', sample_weight)
+        vector_sample_weight = batch.get('vector_sample_weight', sample_weight)
+        reg_sample_weight = batch.get('reg_sample_weight', sample_weight)
         return {
-            'bc': self.losses['bc'](outputs['bc'], batch['bc_target'], sample_weight=sample_weight),
+            'bc': self.losses['bc'](outputs['bc'], batch['bc_target'], sample_weight=bc_sample_weight),
             'vector_regression': self.losses['vector_regression'](
-                outputs['vector_regression'], batch['vector_target'], sample_weight=sample_weight
+                outputs['vector_regression'],
+                batch['vector_target'],
+                sample_weight=vector_sample_weight,
             ),
             'regression': self.losses['regression'](
-                outputs['regression'], batch['reg_target'], sample_weight=sample_weight
+                outputs['regression'],
+                batch['reg_target'],
+                sample_weight=reg_sample_weight,
             ),
         }
 

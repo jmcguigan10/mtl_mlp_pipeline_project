@@ -44,11 +44,15 @@ Everything is plain MLPs. No transformers sneaking in to feel important.
 
 ```text
 mtl_mlp_pipeline_project/
+├── Makefile
 ├── configs/
-│   ├── example_static.yaml
-│   ├── example_kendall_gal.yaml
-│   ├── example_gradnorm.yaml
-│   └── example_pcgrad.yaml
+│   ├── README.md
+│   ├── rhea_box3d_abs_train.yaml
+│   ├── rhea_equivariant_abs_train.yaml
+│   ├── rhea_box3d_abs_smoke.yaml
+│   ├── rhea_equivariant_abs_smoke.yaml
+│   ├── rhea_stable_smoke.yaml
+│   └── example_*.yaml
 ├── mtl_mlp/
 │   ├── config.py
 │   ├── data/
@@ -57,8 +61,13 @@ mtl_mlp_pipeline_project/
 │   │   ├── blocks.py
 │   │   ├── heads.py
 │   │   └── multitask_model.py
+│   ├── preprocessing/
+│   │   ├── ambiguity_filter.py
+│   │   ├── box3d_heuristic.py
+│   │   └── lebedev17_fallback.py
 │   ├── training/
 │   │   ├── balancers.py
+│   │   ├── epoch_metrics.py
 │   │   ├── losses.py
 │   │   ├── optim.py
 │   │   ├── pcgrad.py
@@ -101,31 +110,98 @@ data:
 pip install -r requirements.txt
 ```
 
-### 2) Make synthetic HDF5 data
+### 2) If you are training on Rhea-style data (recommended path)
 
 ```bash
-python scripts/make_dummy_hdf5.py --output_dir ./example_data --vector_dim 3
+make preprocess INPUT_DIR=./example_data OUTPUT_DIR=./example_data_box3d_abs
+make train CONFIG=configs/rhea_box3d_abs_train.yaml
 ```
 
-### 3) Train
+Config guide:
+- `configs/README.md`
+
+### 3) Synthetic demo path (optional)
 
 ```bash
-python train.py --config configs/example_static.yaml
+make check-python
+./.venv/bin/python scripts/make_dummy_hdf5.py --output_dir ./example_data --vector_dim 3
 ```
 
-### 4) Evaluate a checkpoint
+### 4) Train
 
 ```bash
-python evaluate.py --config configs/example_static.yaml --checkpoint outputs/static_demo/checkpoints/best.pt --split test
+make train CONFIG=configs/example_static.yaml
 ```
 
-### 5) Run inference and save predictions
+### 5) Evaluate a checkpoint
 
 ```bash
-python predict.py --config configs/example_static.yaml --checkpoint outputs/static_demo/checkpoints/best.pt --split test --output outputs/static_demo/test_predictions.npz
+make eval \
+  CONFIG=configs/example_static.yaml \
+  CHECKPOINT=outputs/static_demo/checkpoints/best.pt \
+  SPLIT=test \
+  OUTPUT=outputs/static_demo/test_metrics.json
 ```
 
-You can also pass `--files file1.h5 file2.h5` to run prediction on arbitrary HDF5 files. In that mode only the input dataset is required, because sometimes you just want predictions instead of another lecture from your labels.
+### 6) Run inference and save predictions
+
+```bash
+make predict \
+  CONFIG=configs/example_static.yaml \
+  CHECKPOINT=outputs/static_demo/checkpoints/best.pt \
+  SPLIT=test \
+  OUTPUT=outputs/static_demo/test_predictions.npz
+```
+
+You can also pass `FILES="file1.h5 file2.h5"` to `make predict` for ad-hoc HDF5 inference. In that mode only the input dataset is required.
+
+Dataset split control stays YAML-driven (to prevent leakage by file):
+- `data.train_files`
+- `data.val_files`
+- `data.test_files`
+
+`make train/eval/predict` only choose the config and runtime options; they do not override those split lists unless you provide a different YAML.
+
+## Preprocessing for mixed stable/asymptotic training
+
+To build MLP-ready datasets from Rhea-style files (`F4_initial(1|ccm)`), run:
+
+```bash
+make preprocess INPUT_DIR=./example_data OUTPUT_DIR=./example_data_box3d_abs
+```
+
+Behavior:
+- preserves `F4_initial(1|ccm)` and `nf` in the output files
+- writes absolute training targets under `targets/...`:
+  - `targets/F4_final(1|ccm)` (from source asymptotic data; falls back to `F4_initial` for stable files)
+  - `targets/growthRate(1|s)` (from source asymptotic data; falls back to `0` for stable files)
+- writes per-task loss masks under `masks/...`:
+  - `masks/bc_target_weight` (`1` by default, downweighted for stable points too close to unstable points)
+  - `masks/vector_target_weight` (matches `bc_target_weight` by default; use `--ambiguity_only_bc` to keep this at `1`)
+  - `masks/reg_target_weight` (`1` for asymptotic samples, `0` for stable samples)
+- also writes normalized absolute columns under `normalized/...`:
+  - `normalized/F4_initial(1|ccm)`
+  - `normalized/targets/F4_final(1|ccm)`
+  - `normalized/targets/growthRate(1|s)`
+- writes/derives `stable` labels (uses source `stable` when present; otherwise derives from source growth threshold)
+- skips any file with `box3d` in its filename unless `--include_box3d_files` is passed
+- skips any file with `leakagerates` in its filename unless `--include_leakagerates_files` is passed
+- runs a stable-vs-unstable nearest-neighbor ambiguity filter by default:
+  - builds normalized flattened `F4_initial` features
+  - computes each stable sample's nearest unstable distance
+  - downweights ambiguous stable points using `masks/bc_target_weight` (and `masks/vector_target_weight` unless `--ambiguity_only_bc`)
+  - defaults: quantile threshold `--ambiguity_quantile 0.02`, downweight `--ambiguity_stable_weight 0.0`
+
+Use:
+- `configs/rhea_box3d_abs_train.yaml` for full non-equivariant MLP training on absolute targets.
+- `configs/rhea_equivariant_abs_train.yaml` for full non-GNN equivariant-basis training.
+- `configs/rhea_box3d_abs_smoke.yaml` and `configs/rhea_equivariant_abs_smoke.yaml` for 1-epoch smoke checks.
+- `configs/README.md` for profile descriptions and what to edit first.
+
+When `evaluation.control.enabled: true`, Box3D control is computed on-the-fly during evaluation (no `box3d/*` dataset columns needed). Reported metrics include:
+- `*/vector_vs_control_frac_mean|median|p95|p99`
+- `*/growth_vs_control_frac_mean|median|p95|p99`
+- and percentage forms `*/vector_error_vs_control_pct`, `*/growth_error_vs_control_pct`.
 
 ## Config notes
 
@@ -171,10 +247,51 @@ outputs/<experiment_name>/
 └── history.csv
 ```
 
+## SLURM launchers (Rhea-compatible)
+
+This repo includes Rhea-style sbatch wrappers with the same cluster defaults (`isaac-utk0307`, `condo-slagergr`, module stack, repo-local `.venv`). The wrappers now route execution through `make` targets:
+
+```bash
+sbatch train.sbatch
+sbatch eval_f1.sbatch
+sbatch predict.sbatch
+sbatch preprocess_box3d.sbatch
+```
+
+Common overrides are passed at submit time, for example:
+
+```bash
+sbatch --export=ALL,MTL_MLP_CONFIG=configs/rhea_box3d_abs_train.yaml train.sbatch
+sbatch --export=ALL,MTL_MLP_CONFIG=configs/rhea_box3d_abs_train.yaml,MTL_MLP_CHECKPOINT=outputs/rhea_box3d_abs_train/checkpoints/best.pt eval_f1.sbatch
+sbatch --export=ALL,MTL_MLP_CHECKPOINT=outputs/rhea_box3d_abs_train/checkpoints/best.pt,MTL_MLP_FILES="example_data_box3d_abs/stable_random.h5" predict.sbatch
+sbatch --export=ALL,MTL_MLP_INPUT_DIR=example_data,MTL_MLP_OUTPUT_DIR=example_data_box3d_abs preprocess_box3d.sbatch
+```
+
 ## Smoke test
 
 ```bash
-python scripts/smoke_test.py
+make smoke
 ```
 
-That generates synthetic data and runs a short training cycle using `configs/example_static.yaml`. Miracles do occasionally happen.
+That generates synthetic data in a temporary directory and runs a short training cycle. It does not modify `example_data/`.
+
+For the Rhea dataset symlink layout (`example_data/*.h5 -> ../Rhea/datasets/*.h5`), use:
+
+```bash
+make smoke-rhea
+```
+
+This runs a one-epoch train/eval/predict cycle with `configs/rhea_stable_smoke.yaml`.
+
+For Box3D preprocessing + absolute-target MLP training smoke test, use:
+
+```bash
+make smoke-box3d
+```
+
+For non-GNN equivariant-basis training + control metrics smoke test, use:
+
+```bash
+make smoke-equiv
+make test-equiv
+```

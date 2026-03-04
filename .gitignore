@@ -1,0 +1,8 @@
+example_dat*
+benchmark_data*
+logs*
+checkpoints*
+alt_Rhea*
+.venv
+__pycache__/
+*smoke*

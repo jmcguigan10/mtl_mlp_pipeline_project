@@ -1,0 +1,241 @@
+{
+  "_config_dir": "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/configs",
+  "_config_path": "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/configs/tmp_rhea_box3d_train.CAt1L7.yaml",
+  "data": {
+    "hdf5": {
+      "strict": true,
+      "swmr": false
+    },
+    "keys": {
+      "bc_sample_weight": "masks/bc_target_weight",
+      "bc_target": "stable",
+      "input": "normalized/F4_initial(1|ccm)",
+      "reg_sample_weight": "masks/reg_target_weight",
+      "reg_target": "normalized/targets/growthRate(1|s)",
+      "sample_weight": null,
+      "vector_sample_weight": "masks/vector_target_weight",
+      "vector_target": "normalized/targets/F4_final(1|ccm)"
+    },
+    "loader": {
+      "batch_size": 128,
+      "drop_last": false,
+      "num_workers": 0,
+      "persistent_workers": false,
+      "pin_memory": true,
+      "shuffle_train": true
+    },
+    "preprocess": {
+      "reshape": {
+        "input": "flatten",
+        "vector_target": "flatten"
+      }
+    },
+    "test_files": [
+      "/tmp/box3d_check.3TEtXf/stable_zerofluxfac.h5"
+    ],
+    "train_files": [
+      "/tmp/box3d_check.3TEtXf/asymptotic_random.h5",
+      "/tmp/box3d_check.3TEtXf/stable_random.h5"
+    ],
+    "val_files": [
+      "/tmp/box3d_check.3TEtXf/stable_oneflavor.h5"
+    ]
+  },
+  "evaluation": {
+    "bc_threshold": 0.5,
+    "control": {
+      "compute_during_fit": false,
+      "enabled": true,
+      "input_is_normalized": true,
+      "nf": 3,
+      "ratio_eps": 1e-08,
+      "ratio_floor_quantile": 0.1
+    }
+  },
+  "logging": {
+    "keep_last_n_checkpoints": 5,
+    "save_every_epoch": true,
+    "train_log_interval": 10
+  },
+  "losses": {
+    "bc": {
+      "kind": "binary_classification",
+      "name": "bce_with_logits",
+      "pos_weight": null
+    },
+    "regression": {
+      "beta": 1.0,
+      "kind": "regression",
+      "name": "smooth_l1"
+    },
+    "vector_regression": {
+      "beta": 1.0,
+      "kind": "vector_regression",
+      "name": "smooth_l1"
+    }
+  },
+  "model": {
+    "heads": {
+      "bc": {
+        "activation": "relu",
+        "batch_norm": false,
+        "dropout": 0.0,
+        "freeze": false,
+        "hidden_dims": [
+          64
+        ],
+        "layer_norm": false,
+        "output_dim": 1,
+        "recalibration": {
+          "enabled": false,
+          "min_hidden_dim": 4,
+          "reduction": 4
+        },
+        "residual": false
+      },
+      "regression": {
+        "activation": "relu",
+        "batch_norm": false,
+        "dropout": 0.0,
+        "freeze": false,
+        "hidden_dims": [
+          64
+        ],
+        "layer_norm": false,
+        "output_dim": 1,
+        "recalibration": {
+          "enabled": false,
+          "min_hidden_dim": 4,
+          "reduction": 4
+        },
+        "residual": false
+      },
+      "vector_regression": {
+        "activation": "relu",
+        "batch_norm": false,
+        "dropout": 0.0,
+        "freeze": false,
+        "hidden_dims": [
+          128,
+          64
+        ],
+        "layer_norm": false,
+        "output_dim": 24,
+        "recalibration": {
+          "enabled": false,
+          "min_hidden_dim": 4,
+          "reduction": 4
+        },
+        "residual": false
+      }
+    },
+    "input_dim": 24,
+    "trunk": {
+      "activation": "gelu",
+      "batch_norm": true,
+      "dropout": 0.1,
+      "freeze": false,
+      "hidden_dims": [
+        256,
+        256,
+        128
+      ],
+      "layer_norm": false,
+      "recalibration": {
+        "enabled": false,
+        "min_hidden_dim": 8,
+        "reduction": 4
+      },
+      "residual": false
+    }
+  },
+  "multitask": {
+    "gradient_surgery": {
+      "name": "none",
+      "reduction": "mean"
+    },
+    "loss_balancer": {
+      "gradnorm": {
+        "alpha": 1.5,
+        "initial_weights": {
+          "bc": 1.0,
+          "regression": 1.0,
+          "vector_regression": 1.0
+        },
+        "lr": 0.025
+      },
+      "kendall_gal": {
+        "initial_log_vars": {
+          "bc": 0.0,
+          "regression": 0.0,
+          "vector_regression": 0.0
+        }
+      },
+      "name": "static",
+      "static_weights": {
+        "bc": 1.0,
+        "regression": 1.0,
+        "vector_regression": 1.0
+      }
+    }
+  },
+  "output": {
+    "dir": "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/outputs",
+    "experiment_name": "rhea_box3d_abs_train"
+  },
+  "seed": 42,
+  "training": {
+    "compile_model": false,
+    "cpu_num_interop_threads": 1,
+    "cpu_num_threads": 1,
+    "deterministic": false,
+    "device": "auto",
+    "early_stopping": {
+      "enabled": true,
+      "mode": "min",
+      "monitor": "val/total_loss",
+      "patience": 8
+    },
+    "epochs": 40,
+    "grad_clip_norm": 1.0,
+    "gradient_accumulation_steps": 1,
+    "mixed_precision": true,
+    "optimizer": {
+      "betas": [
+        0.9,
+        0.999
+      ],
+      "eps": 1e-08,
+      "lr": 0.001,
+      "name": "adamw",
+      "param_groups": [
+        {
+          "lr": 0.001,
+          "module": "trunk",
+          "weight_decay": 0.01
+        },
+        {
+          "lr": 0.001,
+          "module": "heads.bc",
+          "weight_decay": 0.0
+        },
+        {
+          "lr": 0.001,
+          "module": "heads.vector_regression",
+          "weight_decay": 0.0
+        },
+        {
+          "lr": 0.001,
+          "module": "heads.regression",
+          "weight_decay": 0.0
+        }
+      ],
+      "weight_decay": 0.01
+    },
+    "scheduler": {
+      "T_max": 40,
+      "eta_min": 1e-06,
+      "name": "cosine"
+    }
+  }
+}

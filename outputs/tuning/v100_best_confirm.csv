@@ -1,0 +1,3 @@
+phase,status,batch_size,lr,model_size,batch_norm,train_samples,train_batches,train_seconds,samples_per_sec,steps_per_sec,peak_mem_gb,train_loss_mean,val_loss_mean,error
+batch,ok,1024,0.001,medium,False,4096,4,7.830404374748468,523.089205100161,0.510829301855626,0.02311420440673828,1.0044662356376648,nan,
+hyper,ok,1024,0.001,large,False,24576,24,46.12595534697175,532.8019726666422,0.5203144264322678,0.03408193588256836,0.7733430117368698,0.6551784336566925,

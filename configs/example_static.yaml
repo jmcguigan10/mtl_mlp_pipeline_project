@@ -1,3 +1,5 @@
+# Synthetic tutorial config (dummy `example_data/*` layout).
+
 seed: 42
 
 output:

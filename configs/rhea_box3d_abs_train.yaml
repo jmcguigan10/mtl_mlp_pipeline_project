@@ -1,0 +1,191 @@
+# Main training config for non-equivariant MLP on preprocessed Rhea-style data.
+# Workflow:
+#   1) make preprocess INPUT_DIR=./example_data OUTPUT_DIR=./example_data_box3d_abs
+#   2) edit data.train_files / val_files / test_files (file-level splits)
+#   3) make train CONFIG=configs/rhea_box3d_abs_train.yaml
+
+seed: 42
+
+output:
+  dir: ../outputs
+  experiment_name: rhea_box3d_abs_train
+
+data:
+  # Update these file lists for your experiment split.
+  # Keep split at file granularity to avoid leakage.
+  train_files:
+    - ../example_data_box3d_abs/asymptotic_random.h5
+    - ../example_data_box3d_abs/stable_random.h5
+  val_files:
+    - ../example_data_box3d_abs/stable_oneflavor.h5
+  test_files:
+    - ../example_data_box3d_abs/stable_zerofluxfac.h5
+  hdf5:
+    strict: true
+    swmr: false
+  keys:
+    input: normalized/F4_initial(1|ccm)
+    bc_target: stable
+    vector_target: normalized/targets/F4_final(1|ccm)
+    reg_target: normalized/targets/growthRate(1|s)
+    sample_weight: null
+    bc_sample_weight: masks/bc_target_weight
+    vector_sample_weight: masks/vector_target_weight
+    reg_sample_weight: masks/reg_target_weight
+  preprocess:
+    reshape:
+      input: flatten
+      vector_target: flatten
+  loader:
+    batch_size: 128
+    num_workers: 0
+    pin_memory: true
+    persistent_workers: false
+    drop_last: false
+    shuffle_train: true
+
+model:
+  input_dim: 24
+  trunk:
+    hidden_dims: [256, 256, 128]
+    activation: gelu
+    batch_norm: true
+    layer_norm: false
+    dropout: 0.10
+    residual: false
+    freeze: false
+    recalibration:
+      enabled: false
+      reduction: 4
+      min_hidden_dim: 8
+  heads:
+    bc:
+      hidden_dims: [64]
+      output_dim: 1
+      activation: relu
+      batch_norm: false
+      layer_norm: false
+      dropout: 0.0
+      residual: false
+      freeze: false
+      recalibration:
+        enabled: false
+        reduction: 4
+        min_hidden_dim: 4
+    vector_regression:
+      hidden_dims: [128, 64]
+      output_dim: 24
+      activation: relu
+      batch_norm: false
+      layer_norm: false
+      dropout: 0.0
+      residual: false
+      freeze: false
+      recalibration:
+        enabled: false
+        reduction: 4
+        min_hidden_dim: 4
+    regression:
+      hidden_dims: [64]
+      output_dim: 1
+      activation: relu
+      batch_norm: false
+      layer_norm: false
+      dropout: 0.0
+      residual: false
+      freeze: false
+      recalibration:
+        enabled: false
+        reduction: 4
+        min_hidden_dim: 4
+
+losses:
+  bc:
+    kind: binary_classification
+    name: bce_with_logits
+    pos_weight: null
+  vector_regression:
+    kind: vector_regression
+    name: smooth_l1
+    beta: 1.0
+  regression:
+    kind: regression
+    name: smooth_l1
+    beta: 1.0
+
+multitask:
+  loss_balancer:
+    name: static
+    static_weights:
+      bc: 1.0
+      vector_regression: 1.0
+      regression: 1.0
+    kendall_gal:
+      initial_log_vars:
+        bc: 0.0
+        vector_regression: 0.0
+        regression: 0.0
+    gradnorm:
+      alpha: 1.5
+      lr: 0.025
+      initial_weights:
+        bc: 1.0
+        vector_regression: 1.0
+        regression: 1.0
+  gradient_surgery:
+    name: none
+    reduction: mean
+
+training:
+  device: auto
+  cpu_num_threads: 1
+  cpu_num_interop_threads: 1
+  deterministic: false
+  epochs: 40
+  mixed_precision: true
+  compile_model: false
+  grad_clip_norm: 1.0
+  gradient_accumulation_steps: 1
+  optimizer:
+    name: adamw
+    lr: 0.001
+    weight_decay: 0.01
+    betas: [0.9, 0.999]
+    eps: 1.0e-8
+    param_groups:
+      - module: trunk
+        lr: 0.001
+        weight_decay: 0.01
+      - module: heads.bc
+        lr: 0.001
+        weight_decay: 0.0
+      - module: heads.vector_regression
+        lr: 0.001
+        weight_decay: 0.0
+      - module: heads.regression
+        lr: 0.001
+        weight_decay: 0.0
+  scheduler:
+    name: cosine
+    T_max: 40
+    eta_min: 1.0e-6
+  early_stopping:
+    enabled: true
+    monitor: val/total_loss
+    mode: min
+    patience: 8
+
+logging:
+  train_log_interval: 10
+  save_every_epoch: true
+  keep_last_n_checkpoints: 5
+
+evaluation:
+  bc_threshold: 0.5
+  control:
+    enabled: true
+    compute_during_fit: false
+    input_is_normalized: true
+    nf: 3
+    ratio_eps: 1.0e-8
+    ratio_floor_quantile: 0.10

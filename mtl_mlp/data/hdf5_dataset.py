@@ -32,6 +32,8 @@ class MultiFileHDF5Dataset(Dataset):
         input_dtype: torch.dtype = torch.float32,
         target_dtype: torch.dtype = torch.float32,
         require_targets: bool = True,
+        reshape_map: dict[str, str] | None = None,
+        input_feature_dim: int | None = 24,
     ) -> None:
         super().__init__()
         self.files = [str(Path(path).expanduser().resolve()) for path in files]
@@ -41,6 +43,14 @@ class MultiFileHDF5Dataset(Dataset):
         self.input_dtype = input_dtype
         self.target_dtype = target_dtype
         self.require_targets = require_targets
+        default_reshape_map = {
+            'input': 'flatten',
+            'vector_target': 'flatten',
+        }
+        if reshape_map:
+            default_reshape_map.update({str(key): str(value) for key, value in reshape_map.items()})
+        self.reshape_map = default_reshape_map
+        self.input_feature_dim = input_feature_dim
         self._handles: dict[int, h5py.File] = {}
         self._lengths: list[int] = []
         self._cumulative: list[int] = []
@@ -53,6 +63,12 @@ class MultiFileHDF5Dataset(Dataset):
             return
 
         required_keys = ['input'] if not self.require_targets else ['input', 'bc_target', 'vector_target', 'reg_target']
+        strict_optional_keys = {
+            'sample_weight',
+            'bc_sample_weight',
+            'vector_sample_weight',
+            'reg_sample_weight',
+        }
         running_total = 0
         cumulative: list[int] = []
         lengths: list[int] = []
@@ -69,9 +85,14 @@ class MultiFileHDF5Dataset(Dataset):
                     if hdf5_key not in handle:
                         raise KeyError(f"Dataset key '{hdf5_key}' not found in file {file_path}")
                     lengths_for_keys.append(int(handle[hdf5_key].shape[0]))
-                optional_key = self.key_map.get('sample_weight')
-                if optional_key and optional_key in handle:
-                    lengths_for_keys.append(int(handle[optional_key].shape[0]))
+                for logical_key in ['sample_weight', 'bc_sample_weight', 'vector_sample_weight', 'reg_sample_weight']:
+                    optional_key = self.key_map.get(logical_key)
+                    if not optional_key:
+                        continue
+                    if optional_key in handle:
+                        lengths_for_keys.append(int(handle[optional_key].shape[0]))
+                    elif self.strict and logical_key in strict_optional_keys:
+                        raise KeyError(f"Configured key '{optional_key}' ({logical_key}) not found in file {file_path}")
                 unique_lengths = set(lengths_for_keys)
                 if len(unique_lengths) != 1:
                     raise ValueError(
@@ -80,9 +101,16 @@ class MultiFileHDF5Dataset(Dataset):
                 file_len = lengths_for_keys[0]
                 if self.strict:
                     input_shape = handle[self.key_map['input']].shape
-                    if len(input_shape) != 2 or int(input_shape[1]) != 24:
+                    if len(input_shape) < 2:
                         raise ValueError(
-                            f"Expected input dataset '{self.key_map['input']}' to have shape [N, 24], got {input_shape}"
+                            f"Expected input dataset '{self.key_map['input']}' to have at least 2 dimensions, got {input_shape}"
+                        )
+                    flattened_dim = int(np.prod(input_shape[1:]))
+                    expected_dim = self.input_feature_dim
+                    if expected_dim is not None and flattened_dim != expected_dim:
+                        raise ValueError(
+                            f"Expected input dataset '{self.key_map['input']}' to flatten to [N, {expected_dim}], "
+                            f'got shape {input_shape}'
                         )
                 lengths.append(file_len)
                 running_total += file_len
@@ -137,11 +165,20 @@ class MultiFileHDF5Dataset(Dataset):
             array = array.reshape(1)
         return array.astype(np.float32, copy=False)
 
+    def _prepare_array(self, logical_key: str, value: Any) -> np.ndarray:
+        array = self._to_numpy(value)
+        mode = str(self.reshape_map.get(logical_key, 'none')).lower()
+        if mode == 'none':
+            return array
+        if mode == 'flatten':
+            return array.reshape(-1)
+        raise ValueError(f"Unsupported reshape mode '{mode}' for logical key '{logical_key}'")
+
     def __getitem__(self, index: int) -> dict[str, torch.Tensor]:
         entry = self._locate_index(index)
         handle = self._get_handle(entry.file_index)
 
-        x = self._to_numpy(handle[self.key_map['input']][entry.local_index])
+        x = self._prepare_array('input', handle[self.key_map['input']][entry.local_index])
         sample: dict[str, torch.Tensor] = {
             'inputs': torch.as_tensor(x, dtype=self.input_dtype),
             'file_index': torch.tensor(entry.file_index, dtype=torch.long),
@@ -149,32 +186,64 @@ class MultiFileHDF5Dataset(Dataset):
         }
 
         if self.require_targets:
-            bc_target = self._to_numpy(handle[self.key_map['bc_target']][entry.local_index])
-            vector_target = self._to_numpy(handle[self.key_map['vector_target']][entry.local_index])
-            reg_target = self._to_numpy(handle[self.key_map['reg_target']][entry.local_index])
+            bc_target = self._prepare_array('bc_target', handle[self.key_map['bc_target']][entry.local_index])
+            vector_target = self._prepare_array('vector_target', handle[self.key_map['vector_target']][entry.local_index])
+            reg_target = self._prepare_array('reg_target', handle[self.key_map['reg_target']][entry.local_index])
             sample['bc_target'] = torch.as_tensor(bc_target, dtype=self.target_dtype)
             sample['vector_target'] = torch.as_tensor(vector_target, dtype=self.target_dtype)
             sample['reg_target'] = torch.as_tensor(reg_target, dtype=self.target_dtype)
 
             sample_weight_key = self.key_map.get('sample_weight')
             if sample_weight_key and sample_weight_key in handle:
-                sample_weight = self._to_numpy(handle[sample_weight_key][entry.local_index])
+                sample_weight = self._prepare_array('sample_weight', handle[sample_weight_key][entry.local_index])
                 sample['sample_weight'] = torch.as_tensor(sample_weight, dtype=self.target_dtype)
+
+            bc_sample_weight_key = self.key_map.get('bc_sample_weight')
+            if bc_sample_weight_key and bc_sample_weight_key in handle:
+                bc_sample_weight = self._prepare_array('bc_sample_weight', handle[bc_sample_weight_key][entry.local_index])
+                sample['bc_sample_weight'] = torch.as_tensor(bc_sample_weight, dtype=self.target_dtype)
+
+            vector_sample_weight_key = self.key_map.get('vector_sample_weight')
+            if vector_sample_weight_key and vector_sample_weight_key in handle:
+                vector_sample_weight = self._prepare_array(
+                    'vector_sample_weight',
+                    handle[vector_sample_weight_key][entry.local_index],
+                )
+                sample['vector_sample_weight'] = torch.as_tensor(vector_sample_weight, dtype=self.target_dtype)
+
+            reg_sample_weight_key = self.key_map.get('reg_sample_weight')
+            if reg_sample_weight_key and reg_sample_weight_key in handle:
+                reg_sample_weight = self._prepare_array('reg_sample_weight', handle[reg_sample_weight_key][entry.local_index])
+                sample['reg_sample_weight'] = torch.as_tensor(reg_sample_weight, dtype=self.target_dtype)
 
         return sample
 
 
-
-def build_datasets(config: Any) -> dict[str, MultiFileHDF5Dataset | None]:
-    key_map = {
+def build_key_map(config: Any) -> dict[str, str | None]:
+    return {
         'input': config.data.keys.input,
         'bc_target': config.data.keys.bc_target,
         'vector_target': config.data.keys.vector_target,
         'reg_target': config.data.keys.reg_target,
         'sample_weight': config.data.keys.get('sample_weight'),
+        'bc_sample_weight': config.data.keys.get('bc_sample_weight'),
+        'vector_sample_weight': config.data.keys.get('vector_sample_weight'),
+        'reg_sample_weight': config.data.keys.get('reg_sample_weight'),
     }
+
+
+def build_datasets(config: Any) -> dict[str, MultiFileHDF5Dataset | None]:
+    key_map = build_key_map(config)
     strict = bool(config.data.get_path('hdf5.strict', True))
     swmr = bool(config.data.get_path('hdf5.swmr', False))
+    reshape_map = {
+        'input': 'flatten',
+        'vector_target': 'flatten',
+    }
+    user_reshape_map = config.data.get_path('preprocess.reshape')
+    if isinstance(user_reshape_map, dict):
+        for key, value in user_reshape_map.items():
+            reshape_map[str(key)] = str(value)
 
     def _maybe_build(file_list: list[str]) -> MultiFileHDF5Dataset | None:
         if not file_list:
@@ -184,6 +253,8 @@ def build_datasets(config: Any) -> dict[str, MultiFileHDF5Dataset | None]:
             key_map=key_map,
             strict=strict,
             swmr=swmr,
+            reshape_map=reshape_map,
+            input_feature_dim=int(config.model.get('input_dim', 24)),
         )
 
     return {

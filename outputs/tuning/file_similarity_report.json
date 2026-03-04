@@ -1,0 +1,352 @@
+{
+  "split_files": {
+    "train": [
+      "asymptotic_M1-NuLib.h5",
+      "asymptotic_M1-NuLib-7ms.h5",
+      "stable_M1-LeakageRates_rl0.h5",
+      "stable_M1-LeakageRates_rl1.h5",
+      "stable_M1-NuLib-old_rl0.h5",
+      "stable_M1-NuLib_rl0.h5",
+      "stable_M1-NuLib_rl1.h5",
+      "stable_M1-Nulib-7ms_rl0.h5",
+      "stable_M1-Nulib-7ms_rl1.h5",
+      "stable_oneflavor.h5",
+      "stable_random.h5",
+      "stable_zerofluxfac.h5"
+    ],
+    "val": [
+      "asymptotic_M1-NuLib-old.h5",
+      "stable_M1-LeakageRates_rl2.h5",
+      "stable_M1-NuLib_rl2.h5",
+      "stable_M1-Nulib-7ms_rl2.h5"
+    ],
+    "test": [
+      "asymptotic_random.h5",
+      "stable_M1-LeakageRates_rl3.h5",
+      "stable_M1-NuLib_rl3.h5",
+      "stable_M1-Nulib-7ms_rl3.h5"
+    ]
+  },
+  "nearest_pairs_cross_split": [
+    {
+      "distance": 0.1134672686457634,
+      "file_a": "asymptotic_M1-NuLib.h5",
+      "split_a": "train",
+      "file_b": "stable_M1-NuLib_rl2.h5",
+      "split_b": "val",
+      "cross_split": true
+    },
+    {
+      "distance": 0.11982546001672745,
+      "file_a": "asymptotic_random.h5",
+      "split_a": "test",
+      "file_b": "stable_oneflavor.h5",
+      "split_b": "train",
+      "cross_split": true
+    },
+    {
+      "distance": 0.1223347932100296,
+      "file_a": "asymptotic_random.h5",
+      "split_a": "test",
+      "file_b": "stable_zerofluxfac.h5",
+      "split_b": "train",
+      "cross_split": true
+    },
+    {
+      "distance": 0.12335525453090668,
+      "file_a": "asymptotic_M1-NuLib.h5",
+      "split_a": "train",
+      "file_b": "stable_M1-LeakageRates_rl2.h5",
+      "split_b": "val",
+      "cross_split": true
+    },
+    {
+      "distance": 0.1240367665886879,
+      "file_a": "asymptotic_random.h5",
+      "split_a": "test",
+      "file_b": "stable_random.h5",
+      "split_b": "train",
+      "cross_split": true
+    },
+    {
+      "distance": 0.1251164972782135,
+      "file_a": "stable_M1-Nulib-7ms_rl2.h5",
+      "split_a": "val",
+      "file_b": "stable_M1-Nulib-7ms_rl3.h5",
+      "split_b": "test",
+      "cross_split": true
+    },
+    {
+      "distance": 0.12524963915348053,
+      "file_a": "asymptotic_M1-NuLib-old.h5",
+      "split_a": "val",
+      "file_b": "stable_M1-Nulib-7ms_rl3.h5",
+      "split_b": "test",
+      "cross_split": true
+    },
+    {
+      "distance": 0.1273365020751953,
+      "file_a": "stable_M1-LeakageRates_rl2.h5",
+      "split_a": "val",
+      "file_b": "stable_M1-NuLib_rl1.h5",
+      "split_b": "train",
+      "cross_split": true
+    },
+    {
+      "distance": 0.13967791199684143,
+      "file_a": "stable_M1-LeakageRates_rl1.h5",
+      "split_a": "train",
+      "file_b": "stable_M1-NuLib_rl2.h5",
+      "split_b": "val",
+      "cross_split": true
+    },
+    {
+      "distance": 0.14201100170612335,
+      "file_a": "stable_M1-LeakageRates_rl1.h5",
+      "split_a": "train",
+      "file_b": "stable_M1-LeakageRates_rl2.h5",
+      "split_b": "val",
+      "cross_split": true
+    },
+    {
+      "distance": 0.14831776916980743,
+      "file_a": "stable_M1-NuLib_rl1.h5",
+      "split_a": "train",
+      "file_b": "stable_M1-NuLib_rl2.h5",
+      "split_b": "val",
+      "cross_split": true
+    },
+    {
+      "distance": 0.17098349332809448,
+      "file_a": "asymptotic_M1-NuLib-7ms.h5",
+      "split_a": "train",
+      "file_b": "stable_M1-Nulib-7ms_rl2.h5",
+      "split_b": "val",
+      "cross_split": true
+    },
+    {
+      "distance": 0.17342981696128845,
+      "file_a": "stable_M1-LeakageRates_rl2.h5",
+      "split_a": "val",
+      "file_b": "stable_M1-LeakageRates_rl3.h5",
+      "split_b": "test",
+      "cross_split": true
+    },
+    {
+      "distance": 0.18005362153053284,
+      "file_a": "stable_M1-NuLib_rl0.h5",
+      "split_a": "train",
+      "file_b": "stable_M1-NuLib_rl2.h5",
+      "split_b": "val",
+      "cross_split": true
+    },
+    {
+      "distance": 0.18274255096912384,
+      "file_a": "asymptotic_M1-NuLib-old.h5",
+      "split_a": "val",
+      "file_b": "stable_M1-NuLib-old_rl0.h5",
+      "split_b": "train",
+      "cross_split": true
+    },
+    {
+      "distance": 0.1957603543996811,
+      "file_a": "stable_M1-NuLib-old_rl0.h5",
+      "split_a": "train",
+      "file_b": "stable_M1-Nulib-7ms_rl2.h5",
+      "split_b": "val",
+      "cross_split": true
+    },
+    {
+      "distance": 0.20630322396755219,
+      "file_a": "asymptotic_M1-NuLib-7ms.h5",
+      "split_a": "train",
+      "file_b": "asymptotic_M1-NuLib-old.h5",
+      "split_b": "val",
+      "cross_split": true
+    },
+    {
+      "distance": 0.21557879447937012,
+      "file_a": "stable_M1-NuLib_rl2.h5",
+      "split_a": "val",
+      "file_b": "stable_M1-Nulib-7ms_rl1.h5",
+      "split_b": "train",
+      "cross_split": true
+    },
+    {
+      "distance": 0.229660764336586,
+      "file_a": "asymptotic_M1-NuLib-7ms.h5",
+      "split_a": "train",
+      "file_b": "stable_M1-LeakageRates_rl3.h5",
+      "split_b": "test",
+      "cross_split": true
+    },
+    {
+      "distance": 0.23086205124855042,
+      "file_a": "stable_M1-NuLib_rl3.h5",
+      "split_a": "test",
+      "file_b": "stable_M1-Nulib-7ms_rl2.h5",
+      "split_b": "val",
+      "cross_split": true
+    },
+    {
+      "distance": 0.23187659680843353,
+      "file_a": "stable_M1-LeakageRates_rl3.h5",
+      "split_a": "test",
+      "file_b": "stable_M1-NuLib_rl1.h5",
+      "split_b": "train",
+      "cross_split": true
+    },
+    {
+      "distance": 0.23936451971530914,
+      "file_a": "stable_M1-LeakageRates_rl3.h5",
+      "split_a": "test",
+      "file_b": "stable_M1-Nulib-7ms_rl2.h5",
+      "split_b": "val",
+      "cross_split": true
+    },
+    {
+      "distance": 0.2395586520433426,
+      "file_a": "stable_M1-LeakageRates_rl2.h5",
+      "split_a": "val",
+      "file_b": "stable_M1-NuLib_rl3.h5",
+      "split_b": "test",
+      "cross_split": true
+    },
+    {
+      "distance": 0.24050740897655487,
+      "file_a": "asymptotic_M1-NuLib-old.h5",
+      "split_a": "val",
+      "file_b": "stable_M1-NuLib_rl3.h5",
+      "split_b": "test",
+      "cross_split": true
+    },
+    {
+      "distance": 0.24223953485488892,
+      "file_a": "asymptotic_M1-NuLib-old.h5",
+      "split_a": "val",
+      "file_b": "stable_M1-LeakageRates_rl3.h5",
+      "split_b": "test",
+      "cross_split": true
+    },
+    {
+      "distance": 0.2511827349662781,
+      "file_a": "asymptotic_M1-NuLib.h5",
+      "split_a": "train",
+      "file_b": "stable_M1-LeakageRates_rl3.h5",
+      "split_b": "test",
+      "cross_split": true
+    },
+    {
+      "distance": 0.2528976798057556,
+      "file_a": "asymptotic_M1-NuLib-7ms.h5",
+      "split_a": "train",
+      "file_b": "stable_M1-LeakageRates_rl2.h5",
+      "split_b": "val",
+      "cross_split": true
+    },
+    {
+      "distance": 0.25664377212524414,
+      "file_a": "stable_M1-LeakageRates_rl1.h5",
+      "split_a": "train",
+      "file_b": "stable_M1-LeakageRates_rl3.h5",
+      "split_b": "test",
+      "cross_split": true
+    },
+    {
+      "distance": 0.26162034273147583,
+      "file_a": "stable_M1-Nulib-7ms_rl3.h5",
+      "split_a": "test",
+      "file_b": "stable_oneflavor.h5",
+      "split_b": "train",
+      "cross_split": true
+    },
+    {
+      "distance": 0.26431673765182495,
+      "file_a": "stable_M1-Nulib-7ms_rl3.h5",
+      "split_a": "test",
+      "file_b": "stable_zerofluxfac.h5",
+      "split_b": "train",
+      "cross_split": true
+    },
+    {
+      "distance": 0.26454219222068787,
+      "file_a": "stable_M1-NuLib_rl2.h5",
+      "split_a": "val",
+      "file_b": "stable_M1-Nulib-7ms_rl0.h5",
+      "split_b": "train",
+      "cross_split": true
+    },
+    {
+      "distance": 0.2701057493686676,
+      "file_a": "stable_M1-Nulib-7ms_rl3.h5",
+      "split_a": "test",
+      "file_b": "stable_random.h5",
+      "split_b": "train",
+      "cross_split": true
+    },
+    {
+      "distance": 0.27315762639045715,
+      "file_a": "stable_M1-LeakageRates_rl0.h5",
+      "split_a": "train",
+      "file_b": "stable_M1-NuLib_rl2.h5",
+      "split_b": "val",
+      "cross_split": true
+    },
+    {
+      "distance": 0.27894309163093567,
+      "file_a": "asymptotic_M1-NuLib-7ms.h5",
+      "split_a": "train",
+      "file_b": "stable_M1-NuLib_rl3.h5",
+      "split_b": "test",
+      "cross_split": true
+    },
+    {
+      "distance": 0.28249287605285645,
+      "file_a": "stable_M1-LeakageRates_rl3.h5",
+      "split_a": "test",
+      "file_b": "stable_M1-NuLib_rl2.h5",
+      "split_b": "val",
+      "cross_split": true
+    },
+    {
+      "distance": 0.2851130962371826,
+      "file_a": "asymptotic_M1-NuLib-7ms.h5",
+      "split_a": "train",
+      "file_b": "stable_M1-Nulib-7ms_rl3.h5",
+      "split_b": "test",
+      "cross_split": true
+    },
+    {
+      "distance": 0.2889789342880249,
+      "file_a": "stable_M1-NuLib-old_rl0.h5",
+      "split_a": "train",
+      "file_b": "stable_M1-Nulib-7ms_rl3.h5",
+      "split_b": "test",
+      "cross_split": true
+    },
+    {
+      "distance": 0.29349789023399353,
+      "file_a": "asymptotic_M1-NuLib-7ms.h5",
+      "split_a": "train",
+      "file_b": "stable_M1-NuLib_rl2.h5",
+      "split_b": "val",
+      "cross_split": true
+    },
+    {
+      "distance": 0.31116214394569397,
+      "file_a": "stable_M1-NuLib_rl1.h5",
+      "split_a": "train",
+      "file_b": "stable_M1-NuLib_rl3.h5",
+      "split_b": "test",
+      "cross_split": true
+    },
+    {
+      "distance": 0.31430527567863464,
+      "file_a": "stable_M1-LeakageRates_rl2.h5",
+      "split_a": "val",
+      "file_b": "stable_M1-Nulib-7ms_rl0.h5",
+      "split_b": "train",
+      "cross_split": true
+    }
+  ]
+}

@@ -1,0 +1,249 @@
+{
+  "_config_dir": "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/configs",
+  "_config_path": "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/configs/rhea_v100_sweep.yaml",
+  "data": {
+    "hdf5": {
+      "strict": true,
+      "swmr": false
+    },
+    "keys": {
+      "bc_sample_weight": "masks/bc_target_weight",
+      "bc_target": "stable",
+      "input": "normalized/F4_initial(1|ccm)",
+      "reg_sample_weight": "masks/reg_target_weight",
+      "reg_target": "normalized/targets/growthRate(1|s)",
+      "sample_weight": null,
+      "vector_sample_weight": "masks/vector_target_weight",
+      "vector_target": "normalized/targets/F4_final(1|ccm)"
+    },
+    "loader": {
+      "batch_size": 4096,
+      "drop_last": false,
+      "num_workers": 0,
+      "persistent_workers": false,
+      "pin_memory": true,
+      "shuffle_train": true
+    },
+    "preprocess": {
+      "reshape": {
+        "input": "flatten",
+        "vector_target": "flatten"
+      }
+    },
+    "test_files": [],
+    "train_files": [
+      "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/benchmark_data_box3d_abs/asymptotic_M1-NuLib.h5",
+      "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/benchmark_data_box3d_abs/asymptotic_M1-NuLib-7ms.h5",
+      "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/benchmark_data_box3d_abs/stable_M1-LeakageRates_rl0.h5",
+      "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/benchmark_data_box3d_abs/stable_M1-LeakageRates_rl1.h5",
+      "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/benchmark_data_box3d_abs/stable_M1-NuLib-old_rl0.h5",
+      "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/benchmark_data_box3d_abs/stable_M1-NuLib_rl0.h5",
+      "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/benchmark_data_box3d_abs/stable_M1-NuLib_rl1.h5",
+      "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/benchmark_data_box3d_abs/stable_M1-Nulib-7ms_rl0.h5",
+      "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/benchmark_data_box3d_abs/stable_M1-Nulib-7ms_rl1.h5",
+      "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/benchmark_data_box3d_abs/stable_random.h5"
+    ],
+    "val_files": [
+      "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/benchmark_data_box3d_abs/asymptotic_M1-NuLib-old.h5",
+      "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/benchmark_data_box3d_abs/stable_M1-LeakageRates_rl2.h5",
+      "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/benchmark_data_box3d_abs/stable_M1-NuLib_rl2.h5",
+      "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/benchmark_data_box3d_abs/stable_M1-Nulib-7ms_rl2.h5",
+      "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/benchmark_data_box3d_abs/stable_oneflavor.h5"
+    ]
+  },
+  "evaluation": {
+    "bc_threshold": 0.5,
+    "control": {
+      "compute_during_fit": false,
+      "enabled": true,
+      "input_is_normalized": true,
+      "nf": 3,
+      "ratio_eps": 1e-08,
+      "ratio_floor_quantile": 0.1
+    }
+  },
+  "logging": {
+    "keep_last_n_checkpoints": 1,
+    "save_every_epoch": false,
+    "train_log_interval": 50
+  },
+  "losses": {
+    "bc": {
+      "kind": "binary_classification",
+      "name": "bce_with_logits",
+      "pos_weight": null
+    },
+    "regression": {
+      "beta": 1.0,
+      "kind": "regression",
+      "name": "smooth_l1"
+    },
+    "vector_regression": {
+      "beta": 1.0,
+      "kind": "vector_regression",
+      "name": "smooth_l1"
+    }
+  },
+  "model": {
+    "heads": {
+      "bc": {
+        "activation": "relu",
+        "batch_norm": false,
+        "dropout": 0.0,
+        "freeze": false,
+        "hidden_dims": [
+          64
+        ],
+        "layer_norm": false,
+        "output_dim": 1,
+        "recalibration": {
+          "enabled": false,
+          "min_hidden_dim": 4,
+          "reduction": 4
+        },
+        "residual": false
+      },
+      "regression": {
+        "activation": "relu",
+        "batch_norm": false,
+        "dropout": 0.0,
+        "freeze": false,
+        "hidden_dims": [
+          64
+        ],
+        "layer_norm": false,
+        "output_dim": 1,
+        "recalibration": {
+          "enabled": false,
+          "min_hidden_dim": 4,
+          "reduction": 4
+        },
+        "residual": false
+      },
+      "vector_regression": {
+        "activation": "relu",
+        "batch_norm": false,
+        "dropout": 0.0,
+        "freeze": false,
+        "hidden_dims": [
+          128,
+          64
+        ],
+        "layer_norm": false,
+        "output_dim": 24,
+        "recalibration": {
+          "enabled": false,
+          "min_hidden_dim": 4,
+          "reduction": 4
+        },
+        "residual": false
+      }
+    },
+    "input_dim": 24,
+    "trunk": {
+      "activation": "gelu",
+      "batch_norm": false,
+      "dropout": 0.1,
+      "freeze": false,
+      "hidden_dims": [
+        256,
+        256,
+        128
+      ],
+      "layer_norm": false,
+      "recalibration": {
+        "enabled": false,
+        "min_hidden_dim": 8,
+        "reduction": 4
+      },
+      "residual": false
+    }
+  },
+  "multitask": {
+    "gradient_surgery": {
+      "name": "none",
+      "reduction": "mean"
+    },
+    "loss_balancer": {
+      "gradnorm": {
+        "alpha": 1.5,
+        "initial_weights": {
+          "bc": 1.0,
+          "regression": 1.0,
+          "vector_regression": 1.0
+        },
+        "lr": 0.025
+      },
+      "kendall_gal": {
+        "initial_log_vars": {
+          "bc": 0.0,
+          "regression": 0.0,
+          "vector_regression": 0.0
+        }
+      },
+      "name": "static",
+      "static_weights": {
+        "bc": 1.0,
+        "regression": 1.0,
+        "vector_regression": 1.0
+      }
+    }
+  },
+  "output": {
+    "dir": "/nfs/home/jmcguig1/git/mtl_mlp_pipeline_project/outputs",
+    "experiment_name": "v100_batch_bs4096"
+  },
+  "seed": 42,
+  "training": {
+    "compile_model": false,
+    "cpu_num_interop_threads": 2,
+    "cpu_num_threads": 8,
+    "deterministic": false,
+    "device": "auto",
+    "early_stopping": {
+      "enabled": false,
+      "mode": "min",
+      "monitor": "val/total_loss",
+      "patience": 5
+    },
+    "epochs": 1,
+    "grad_clip_norm": 1.0,
+    "gradient_accumulation_steps": 1,
+    "mixed_precision": true,
+    "optimizer": {
+      "betas": [
+        0.9,
+        0.999
+      ],
+      "eps": 1e-08,
+      "lr": 0.001,
+      "name": "adamw",
+      "param_groups": [
+        {
+          "lr": 0.001,
+          "module": "trunk",
+          "weight_decay": 0.01
+        },
+        {
+          "lr": 0.001,
+          "module": "heads.bc",
+          "weight_decay": 0.0
+        },
+        {
+          "lr": 0.001,
+          "module": "heads.vector_regression",
+          "weight_decay": 0.0
+        },
+        {
+          "lr": 0.001,
+          "module": "heads.regression",
+          "weight_decay": 0.0
+        }
+      ],
+      "weight_decay": 0.01
+    },
+    "scheduler": {
+      "name": "none"
+    }
+  }
+}

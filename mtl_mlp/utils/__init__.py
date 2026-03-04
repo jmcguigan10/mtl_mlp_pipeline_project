@@ -1,10 +1,10 @@
 from .common import (
-    AverageMeter,
     configure_torch_runtime,
     count_parameters,
     ensure_dir,
     freeze_module,
     get_device,
+    load_torch_checkpoint,
     module_from_path,
     move_batch_to_device,
     prune_checkpoints,
@@ -13,12 +13,12 @@ from .common import (
 )
 
 __all__ = [
-    'AverageMeter',
     'configure_torch_runtime',
     'count_parameters',
     'ensure_dir',
     'freeze_module',
     'get_device',
+    'load_torch_checkpoint',
     'module_from_path',
     'move_batch_to_device',
     'prune_checkpoints',

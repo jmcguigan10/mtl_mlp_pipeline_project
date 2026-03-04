@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import os
 import random
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -12,32 +11,15 @@ import torch
 import torch.nn as nn
 
 
-@dataclass
-class AverageMeter:
-    total: float = 0.0
-    count: int = 0
-
-    def update(self, value: float, n: int = 1) -> None:
-        self.total += float(value) * n
-        self.count += int(n)
-
-    @property
-    def average(self) -> float:
-        return self.total / max(self.count, 1)
-
-
-
 def ensure_dir(path: str | os.PathLike[str]) -> Path:
     target = Path(path)
     target.mkdir(parents=True, exist_ok=True)
     return target
 
 
-
 def save_json(payload: dict[str, Any], path: str | os.PathLike[str]) -> None:
     with Path(path).open('w', encoding='utf-8') as handle:
         json.dump(payload, handle, indent=2, sort_keys=True)
-
 
 
 def set_seed(seed: int, deterministic: bool = False) -> None:
@@ -49,6 +31,14 @@ def set_seed(seed: int, deterministic: bool = False) -> None:
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
 
+
+def load_torch_checkpoint(path: str | os.PathLike[str]) -> dict[str, Any]:
+    """Load checkpoints across torch versions with weights_only fallback."""
+    resolved = str(Path(path).expanduser().resolve())
+    try:
+        return torch.load(resolved, map_location='cpu', weights_only=True)
+    except TypeError:
+        return torch.load(resolved, map_location='cpu')
 
 
 def get_device(device_name: str = 'auto') -> torch.device:
@@ -69,7 +59,6 @@ def configure_torch_runtime(num_threads: int | None = None, num_interop_threads:
             pass
 
 
-
 def move_batch_to_device(batch: dict[str, Any], device: torch.device) -> dict[str, Any]:
     moved: dict[str, Any] = {}
     for key, value in batch.items():
@@ -82,7 +71,6 @@ def move_batch_to_device(batch: dict[str, Any], device: torch.device) -> dict[st
     return moved
 
 
-
 def module_from_path(model: nn.Module, dotted_path: str) -> nn.Module:
     module: nn.Module = model
     for part in dotted_path.split('.'):
@@ -91,7 +79,6 @@ def module_from_path(model: nn.Module, dotted_path: str) -> nn.Module:
         else:
             module = getattr(module, part)
     return module
-
 
 
 def freeze_module(module: nn.Module, freeze_batch_norm_stats: bool = True) -> None:
@@ -103,12 +90,10 @@ def freeze_module(module: nn.Module, freeze_batch_norm_stats: bool = True) -> No
                 submodule.eval()
 
 
-
 def count_parameters(module: nn.Module) -> dict[str, int]:
     total = sum(parameter.numel() for parameter in module.parameters())
     trainable = sum(parameter.numel() for parameter in module.parameters() if parameter.requires_grad)
     return {'total': int(total), 'trainable': int(trainable)}
-
 
 
 def prune_checkpoints(directory: str | os.PathLike[str], keep_last_n: int) -> None:

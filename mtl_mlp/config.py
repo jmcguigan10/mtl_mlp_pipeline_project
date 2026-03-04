@@ -108,6 +108,12 @@ def validate_config(config: ConfigNode) -> None:
     for path in required_paths:
         _validate_section(config, path)
 
+    architecture = str(config.model.get('architecture', 'mlp')).lower()
+    if architecture not in {'mlp', 'equivariant_basis'}:
+        raise ConfigurationError(
+            f"Unsupported model.architecture '{architecture}'. Choose from mlp or equivariant_basis."
+        )
+
     input_dim = config.get_path('model.input_dim')
     if input_dim != 24:
         raise ConfigurationError(f"model.input_dim must be 24, got {input_dim!r}")

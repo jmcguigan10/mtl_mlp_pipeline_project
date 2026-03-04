@@ -1,3 +1,5 @@
+# Synthetic tutorial config showing PCGrad gradient surgery.
+
 seed: 42
 
 output:

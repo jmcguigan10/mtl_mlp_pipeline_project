@@ -1,3 +1,5 @@
+# Synthetic tutorial config showing GradNorm loss balancing.
+
 seed: 42
 
 output:

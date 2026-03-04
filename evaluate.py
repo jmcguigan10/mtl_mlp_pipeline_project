@@ -3,25 +3,12 @@ from __future__ import annotations
 import argparse
 import json
 
-import torch
-
 from mtl_mlp.config import load_config
 from mtl_mlp.data import build_dataloader, build_datasets
 from mtl_mlp.models import MultiTaskMLP
 from mtl_mlp.training import build_loss_bundle
 from mtl_mlp.training.trainer import Trainer
-from mtl_mlp.utils import configure_torch_runtime, save_json, set_seed
-
-
-def torch_load_checkpoint(path: str):
-    try:
-        return torch.load(path, map_location='cpu', weights_only=True)
-    except TypeError:
-        return torch.load(path, map_location='cpu')
-
-
-
-
+from mtl_mlp.utils import configure_torch_runtime, load_torch_checkpoint, save_json, set_seed
 
 def main() -> None:
     parser = argparse.ArgumentParser(description='Evaluate a trained multi-task MLP checkpoint.')
@@ -54,7 +41,7 @@ def main() -> None:
         test_loader=loaders['test'],
         loss_bundle=loss_bundle,
     )
-    checkpoint = torch_load_checkpoint(args.checkpoint)
+    checkpoint = load_torch_checkpoint(args.checkpoint)
     trainer.model.load_state_dict(checkpoint['model_state_dict'])
     trainer.loss_bundle.load_state_dict(checkpoint.get('loss_bundle_state_dict', {}))
     trainer.balancer.load_state_dict(checkpoint.get('balancer_state_dict', {}))

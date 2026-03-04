@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import csv
-import math
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -10,93 +8,13 @@ import torch
 from torch.nn.utils import clip_grad_norm_
 from tqdm.auto import tqdm
 
+from ..preprocessing import Box3DHeuristic
 from ..utils.common import count_parameters, ensure_dir, get_device, move_batch_to_device, prune_checkpoints, save_json, set_seed
 from .balancers import GradNormLossBalancer, StaticLossBalancer, build_loss_balancer
+from .epoch_metrics import EpochAccumulator
 from .losses import TaskLossBundle, build_loss_bundle
 from .optim import SchedulerBundle, build_optimizers, build_scheduler
 from .pcgrad import PCGrad
-
-
-@dataclass
-class EpochAccumulator:
-    bc_threshold: float = 0.5
-
-    def __post_init__(self) -> None:
-        self.loss_sums: dict[str, float] = {}
-        self.num_samples = 0
-        self.bc_correct = 0
-        self.bc_tp = 0
-        self.bc_fp = 0
-        self.bc_fn = 0
-        self.bc_tn = 0
-        self.reg_abs = 0.0
-        self.reg_sq = 0.0
-        self.reg_count = 0
-        self.vec_abs = 0.0
-        self.vec_sq = 0.0
-        self.vec_l2 = 0.0
-        self.vec_count = 0
-        self.vec_items = 0
-
-    def update_losses(self, losses: dict[str, float], batch_size: int) -> None:
-        self.num_samples += batch_size
-        for key, value in losses.items():
-            self.loss_sums[key] = self.loss_sums.get(key, 0.0) + float(value) * batch_size
-
-    def update_outputs(self, outputs: dict[str, torch.Tensor], batch: dict[str, torch.Tensor]) -> None:
-        bc_logits = outputs['bc'].detach()
-        bc_target = batch['bc_target'].detach()
-        if bc_logits.shape[-1] == 1:
-            probs = torch.sigmoid(bc_logits.reshape_as(bc_target))
-            preds = (probs >= self.bc_threshold).long()
-            targets = bc_target.long()
-            self.bc_correct += int((preds == targets).sum().item())
-            self.bc_tp += int(((preds == 1) & (targets == 1)).sum().item())
-            self.bc_fp += int(((preds == 1) & (targets == 0)).sum().item())
-            self.bc_fn += int(((preds == 0) & (targets == 1)).sum().item())
-            self.bc_tn += int(((preds == 0) & (targets == 0)).sum().item())
-        else:
-            preds = torch.argmax(bc_logits, dim=-1)
-            targets = bc_target.view(-1).long()
-            self.bc_correct += int((preds == targets).sum().item())
-
-        reg_pred = outputs['regression'].detach()
-        reg_target = batch['reg_target'].detach()
-        reg_diff = reg_pred - reg_target
-        self.reg_abs += float(reg_diff.abs().sum().item())
-        self.reg_sq += float((reg_diff ** 2).sum().item())
-        self.reg_count += int(reg_diff.numel())
-
-        vec_pred = outputs['vector_regression'].detach()
-        vec_target = batch['vector_target'].detach()
-        vec_diff = vec_pred - vec_target
-        self.vec_abs += float(vec_diff.abs().sum().item())
-        self.vec_sq += float((vec_diff ** 2).sum().item())
-        self.vec_l2 += float(torch.norm(vec_diff, dim=-1).sum().item())
-        self.vec_count += int(vec_diff.shape[0])
-        self.vec_items += int(vec_diff.numel())
-
-    def summarize(self, prefix: str) -> dict[str, float]:
-        metrics: dict[str, float] = {}
-        for key, value in self.loss_sums.items():
-            metrics[f'{prefix}/{key}'] = value / max(self.num_samples, 1)
-        total_bc = self.bc_tp + self.bc_fp + self.bc_fn + self.bc_tn
-        if total_bc > 0:
-            precision = self.bc_tp / max(self.bc_tp + self.bc_fp, 1)
-            recall = self.bc_tp / max(self.bc_tp + self.bc_fn, 1)
-            f1 = 2 * precision * recall / max(precision + recall, 1e-8)
-            metrics[f'{prefix}/bc_accuracy'] = self.bc_correct / max(total_bc, 1)
-            metrics[f'{prefix}/bc_precision'] = precision
-            metrics[f'{prefix}/bc_recall'] = recall
-            metrics[f'{prefix}/bc_f1'] = f1
-        metrics[f'{prefix}/reg_mae'] = self.reg_abs / max(self.reg_count, 1)
-        metrics[f'{prefix}/reg_mse'] = self.reg_sq / max(self.reg_count, 1)
-        metrics[f'{prefix}/reg_rmse'] = math.sqrt(metrics[f'{prefix}/reg_mse'])
-        metrics[f'{prefix}/vector_mae'] = self.vec_abs / max(self.vec_items, 1)
-        metrics[f'{prefix}/vector_mse'] = self.vec_sq / max(self.vec_items, 1)
-        metrics[f'{prefix}/vector_rmse'] = math.sqrt(metrics[f'{prefix}/vector_mse'])
-        metrics[f'{prefix}/vector_avg_l2'] = self.vec_l2 / max(self.vec_count, 1)
-        return metrics
 
 
 class Trainer:
@@ -132,10 +50,26 @@ class Trainer:
         steps_per_epoch = len(train_loader) if train_loader is not None else 1
         self.scheduler_bundle: SchedulerBundle = build_scheduler(config, self.optimizer, steps_per_epoch)
         self.pcgrad = PCGrad(reduction=str(config.multitask.gradient_surgery.get('reduction', 'mean'))) if self.use_pcgrad else None
-        self.scaler = torch.amp.GradScaler('cuda', enabled=self.amp_enabled)
+        self._use_new_amp = bool(
+            hasattr(torch, 'amp') and hasattr(torch.amp, 'GradScaler') and hasattr(torch.amp, 'autocast')
+        )
+        if self._use_new_amp:
+            self.scaler = torch.amp.GradScaler('cuda', enabled=self.amp_enabled)
+        else:
+            self.scaler = torch.cuda.amp.GradScaler(enabled=self.amp_enabled)
         self.grad_clip_norm = config.training.get('grad_clip_norm')
         self.accumulation_steps = int(config.training.get('gradient_accumulation_steps', 1))
         self.bc_threshold = float(config.evaluation.get('bc_threshold', 0.5))
+        self.control_enabled = bool(config.evaluation.get_path('control.enabled', False))
+        self.control_ratio_eps = float(config.evaluation.get_path('control.ratio_eps', 1.0e-8))
+        self.control_ratio_floor_quantile = float(config.evaluation.get_path('control.ratio_floor_quantile', 0.10))
+        self.control_compute_during_fit = bool(config.evaluation.get_path('control.compute_during_fit', False))
+        self.control_input_is_normalized = bool(config.evaluation.get_path('control.input_is_normalized', True))
+        self.control_nf = int(config.evaluation.get_path('control.nf', 3))
+        self.control_model: Box3DHeuristic | None = None
+        if self.control_enabled:
+            self.control_model = Box3DHeuristic(self.control_nf).to(self.device)
+            self.control_model.eval()
         self.best_monitor_value: float | None = None
         self.best_epoch: int | None = None
         self.history: list[dict[str, float]] = []
@@ -210,11 +144,67 @@ class Trainer:
         task_losses = self.loss_bundle(outputs, batch)
         return outputs, task_losses
 
+    @staticmethod
+    def _inputs_to_canonical(inputs: torch.Tensor) -> torch.Tensor:
+        # Flattened input convention is [B, xyzt=4, nu=2, flavor=3].
+        if inputs.ndim != 2 or inputs.shape[-1] != 24:
+            raise ValueError(f'Expected flattened F4 inputs [B,24], got {tuple(inputs.shape)}')
+        return inputs.view(inputs.shape[0], 4, 2, 3).permute(0, 2, 3, 1).contiguous()
+
+    @staticmethod
+    def _canonical_to_flat(f4: torch.Tensor) -> torch.Tensor:
+        # Canonical [B, nu, flavor, xyzt] -> flattened [B, xyzt, nu, flavor].
+        return f4.permute(0, 3, 1, 2).contiguous().view(f4.shape[0], -1)
+
+    def _compute_control_baseline(self, inputs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        if self.control_model is None:
+            raise ValueError('Control baseline requested but control model is not configured.')
+
+        f4 = self._inputs_to_canonical(inputs)
+        if self.control_input_is_normalized:
+            f4_norm = f4
+            ntot = torch.ones((f4.shape[0],), device=f4.device, dtype=f4.dtype)
+        else:
+            ntot = torch.clamp(f4[:, :, :, 3].sum(dim=(1, 2)), min=1.0e-12)
+            f4_norm = f4 / ntot[:, None, None, None]
+
+        with torch.no_grad():
+            box_f4_norm, box_growth_norm = self.control_model(f4_norm)
+
+        finite_mask = torch.isfinite(box_f4_norm.reshape(box_f4_norm.shape[0], -1)).all(dim=1) & torch.isfinite(
+            box_growth_norm
+        )
+        if not bool(torch.all(finite_mask)):
+            box_f4_norm = torch.where(
+                finite_mask[:, None, None, None],
+                box_f4_norm,
+                f4_norm,
+            )
+            box_growth_norm = torch.where(
+                finite_mask,
+                box_growth_norm,
+                torch.zeros_like(box_growth_norm),
+            )
+
+        if self.control_input_is_normalized:
+            box_f4 = box_f4_norm
+            box_growth = box_growth_norm
+        else:
+            box_f4 = box_f4_norm * ntot[:, None, None, None]
+            box_growth = box_growth_norm * ntot
+
+        return self._canonical_to_flat(box_f4), box_growth.reshape(-1, 1)
+
     def _backward_standard(self, total_loss: torch.Tensor) -> None:
         if self.amp_enabled:
             self.scaler.scale(total_loss).backward()
         else:
             total_loss.backward()
+
+    def _autocast_context(self):
+        if self._use_new_amp:
+            return torch.amp.autocast(device_type='cuda', enabled=self.amp_enabled)
+        return torch.cuda.amp.autocast(enabled=self.amp_enabled)
 
     def _optimizer_step_standard(self) -> None:
         if self.grad_clip_norm is not None:
@@ -232,7 +222,7 @@ class Trainer:
         if self.balancer_optimizer is not None:
             self.balancer_optimizer.zero_grad(set_to_none=True)
 
-        with torch.amp.autocast(device_type='cuda', enabled=self.amp_enabled):
+        with self._autocast_context():
             outputs, task_losses = self._compute_task_losses(batch)
 
         detached_log = {name: float(loss.detach().item()) for name, loss in task_losses.items()}
@@ -283,6 +273,14 @@ class Trainer:
         detached_log.update({f'weight/{k}': v for k, v in weight_info.items()})
         return outputs, detached_log
 
+    def _build_accumulator(self, control_enabled: bool) -> EpochAccumulator:
+        return EpochAccumulator(
+            bc_threshold=self.bc_threshold,
+            control_enabled=control_enabled,
+            control_ratio_eps=self.control_ratio_eps,
+            control_ratio_floor_quantile=self.control_ratio_floor_quantile,
+        )
+
     def _run_loader(self, loader: Any, training: bool, epoch: int) -> dict[str, float]:
         if loader is None:
             return {}
@@ -292,7 +290,8 @@ class Trainer:
             self.model.train(False)
 
         prefix = 'train' if training else 'val'
-        accumulator = EpochAccumulator(bc_threshold=self.bc_threshold)
+        collect_control_metrics = self.control_enabled and (not training) and self.control_compute_during_fit
+        accumulator = self._build_accumulator(control_enabled=collect_control_metrics)
         progress = tqdm(loader, desc=f'{prefix} epoch {epoch}', leave=False)
 
         for step, raw_batch in enumerate(progress, start=1):
@@ -307,6 +306,9 @@ class Trainer:
             batch_size = int(batch['inputs'].shape[0])
             accumulator.update_losses(detached_log, batch_size)
             accumulator.update_outputs(outputs, batch)
+            if collect_control_metrics:
+                control_vector, control_reg = self._compute_control_baseline(batch['inputs'])
+                accumulator.update_control(outputs, batch, control_vector, control_reg)
 
             if step % int(self.config.logging.get('train_log_interval', 20)) == 0 or step == len(loader):
                 progress.set_postfix({'total_loss': f"{detached_log['total_loss']:.4f}"})
@@ -369,7 +371,7 @@ class Trainer:
         if loader is None:
             return {}
         self.model.train(False)
-        accumulator = EpochAccumulator(bc_threshold=self.bc_threshold)
+        accumulator = self._build_accumulator(control_enabled=self.control_enabled)
         progress = tqdm(loader, desc=split_name, leave=False)
         for raw_batch in progress:
             batch = move_batch_to_device(raw_batch, self.device)
@@ -377,4 +379,7 @@ class Trainer:
             batch_size = int(batch['inputs'].shape[0])
             accumulator.update_losses(detached_log, batch_size)
             accumulator.update_outputs(outputs, batch)
+            if self.control_enabled:
+                control_vector, control_reg = self._compute_control_baseline(batch['inputs'])
+                accumulator.update_control(outputs, batch, control_vector, control_reg)
         return accumulator.summarize(split_name)

@@ -4,28 +4,15 @@ import argparse
 import json
 from pathlib import Path
 
-import torch
-
 from mtl_mlp.config import load_config
 from mtl_mlp.data import build_dataloader, build_datasets
 from mtl_mlp.models import MultiTaskMLP
 from mtl_mlp.training import build_loss_bundle
 from mtl_mlp.training.trainer import Trainer
-from mtl_mlp.utils import configure_torch_runtime, set_seed
-
-
-def torch_load_checkpoint(path: str):
-    try:
-        return torch.load(path, map_location='cpu', weights_only=True)
-    except TypeError:
-        return torch.load(path, map_location='cpu')
-
-
-
-
+from mtl_mlp.utils import configure_torch_runtime, load_torch_checkpoint, set_seed
 
 def load_checkpoint(trainer: Trainer, checkpoint_path: str) -> int:
-    checkpoint = torch_load_checkpoint(checkpoint_path)
+    checkpoint = load_torch_checkpoint(checkpoint_path)
     trainer.model.load_state_dict(checkpoint['model_state_dict'])
     trainer.loss_bundle.load_state_dict(checkpoint.get('loss_bundle_state_dict', {}))
     trainer.balancer.load_state_dict(checkpoint.get('balancer_state_dict', {}))

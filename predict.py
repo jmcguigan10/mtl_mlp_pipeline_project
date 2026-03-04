@@ -7,33 +7,16 @@ import numpy as np
 import torch
 
 from mtl_mlp.config import load_config
-from mtl_mlp.data import MultiFileHDF5Dataset, build_dataloader, build_datasets
+from mtl_mlp.data import MultiFileHDF5Dataset, build_dataloader, build_datasets, build_key_map
 from mtl_mlp.models import MultiTaskMLP
-from mtl_mlp.utils import configure_torch_runtime, move_batch_to_device, set_seed
-
-
-def torch_load_checkpoint(path: str):
-    try:
-        return torch.load(path, map_location='cpu', weights_only=True)
-    except TypeError:
-        return torch.load(path, map_location='cpu')
-
-
-
-
+from mtl_mlp.utils import configure_torch_runtime, load_torch_checkpoint, move_batch_to_device, set_seed
 
 def _build_loader_from_args(config, split: str, files: list[str] | None):
     if files:
         dataset = MultiFileHDF5Dataset(
             files=files,
-            key_map={
-                'input': config.data.keys.input,
-                'bc_target': config.data.keys.bc_target,
-                'vector_target': config.data.keys.vector_target,
-                'reg_target': config.data.keys.reg_target,
-                'sample_weight': config.data.keys.get('sample_weight'),
-            },
-            strict=bool(config.data.get_path('hdf5.strict', True)),
+            key_map=build_key_map(config),
+            strict=False,
             swmr=bool(config.data.get_path('hdf5.swmr', False)),
             require_targets=False,
         )
@@ -65,7 +48,7 @@ def main() -> None:
         raise ValueError('No dataset available for prediction.')
 
     model = MultiTaskMLP(config)
-    checkpoint = torch_load_checkpoint(args.checkpoint)
+    checkpoint = load_torch_checkpoint(args.checkpoint)
     model.load_state_dict(checkpoint['model_state_dict'])
     device = torch.device('cuda' if torch.cuda.is_available() and str(config.training.get('device', 'auto')).lower() != 'cpu' else 'cpu')
     model.to(device)
